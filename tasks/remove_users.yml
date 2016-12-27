@@ -1,0 +1,17 @@
+---
+###
+# removes users listed in users__removed, but keeps home dirs
+###
+
+- name: remove users
+  user:
+    name={{ users__catalog[item].username }}
+    remove=no
+    state=absent
+  with_items: "{{ users__removed }}"
+
+- name: remove user groups
+  group:
+    name="{{ users__catalog[item].username }}"
+    state=absent
+  with_items: "{{ users__removed }}"

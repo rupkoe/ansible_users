@@ -1,0 +1,31 @@
+---
+###
+# Sets specific users as mail alias for root.
+#
+# Only users with "get_root_email: yes" are considered.
+# Fails if not at least one alias is defined for root.
+###
+
+
+- name: filter users for root emails
+  set_fact: root_email_users={{ root_email_users|default([]) + [users__catalog[item].username] }}
+  when: users__catalog[item].get_root_email|default(false) == true
+  with_items: "{{ users__present }}"
+  tags: root_email
+
+- name: adjust root mail aliases
+  lineinfile: "dest=/etc/aliases regexp='^root:' line='root: {{ root_email_users|default([])|join(', ') }}'"
+  register: result_mail_aliases
+  tags: root_email
+
+  # rebuilding aliases.db is not necessary if exim is used as MTA, but doesn't hurt either.
+- name: update aliases.db
+  command: /usr/bin/newaliases
+  when: result_mail_aliases | changed
+  tags: root_email
+
+  # task is intended to fail if not at least on user is defined as alias for root
+- name: check a root mail alias exists
+  command: 'grep -P "^root: \w+" /etc/aliases'
+  changed_when: false
+  tags: root_email

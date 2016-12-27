@@ -1,0 +1,97 @@
+---
+###
+# Adds new users, modifies existing ones.
+#
+# Also handles SSH keys, mail forwards, and initial passwords.
+###
+
+
+###
+# add/modify user accounts
+
+  # create individual primary groups
+- name: create user groups
+  group: name="{{ users__catalog[item].username }}" gid="{{ users__catalog[item].uid }}"
+  with_items: "{{ users__present }}"
+
+  # create new user accounts
+- name: create users
+  user: >
+    name={{ users__catalog[item].username }}
+    uid={{ users__catalog[item].uid }}
+    group={{ users__catalog[item].username }}
+    createhome={{ users__catalog[item].createhome | default('yes') }}
+    home='/home/{{ users__catalog[item].username }}'
+    state=present
+  register: new_users
+  with_items: "{{ users__present }}"
+
+  # modifies user accounts - used for parameters which might change over time,
+  # so that default passwords aren't re-inforced on existing users.
+- name: modify users
+  user: >
+    name={{ users__catalog[item].username }}
+    groups={{ users__catalog[item].groups | default([]) | join(',') }}
+    comment={{ users__catalog[item].comment | default(omit) }}
+    shell={{ users__catalog[item].shell | default('/bin/bash') }}
+    state=present
+  with_items: "{{ users__present }}"
+
+
+###
+# set a inital password which must be changed on first login.
+# mostly for sudo, as ssh logins should be key-only
+
+- name: set initial password
+  user: >
+    name={{ users__catalog[item.item].username }}
+    password={{ users__initial_pass|password_hash('sha512')}}
+  when: >
+    item.changed
+    and users__catalog[item.item].set_initial_pass|default(false) == true
+    and users__initial_pass|default('') != ''
+  with_items: "{{ new_users.results }}"
+
+- name: force change of initial password
+  command: /usr/bin/chage -d0 {{ users__catalog[item.item].username }}
+  when: >
+    item.changed
+    and users__catalog[item.item].set_initial_pass|default(false) == true
+    and users__initial_pass|default('') != ''
+  with_items: "{{ new_users.results }}"
+
+
+###
+# manage ssh keys for user accounts.
+
+- name: create missing .ssh dir
+  file:
+    path='/home/{{ users__catalog[item].username }}/.ssh'
+    state=directory
+    owner={{ users__catalog[item].username }} group={{ users__catalog[item].username }}
+    mode=0700
+  with_items: "{{ users__present }}"
+
+  # re-builds whole file, so only keys currently configured for user in cataloge will be present.
+- name: manage authorized SSH keys
+  copy: >
+    dest='/home/{{ users__catalog[item].username }}/.ssh/authorized_keys'
+    content='{{ users__is_managed_notice }}{{ users__catalog[item].ssh_keys | default([]) | join("\n") }}'
+    owner={{ users__catalog[item].username }} group={{ users__catalog[item].username }}
+    mode=0600
+    force=yes
+  with_items: "{{ users__present }}"
+
+
+###
+# manage email forwarding for user accounts
+
+  # re-builds whole file, so only addresses currently configured for user in cataloge will be present.
+- name: manage email forwards
+  copy: >
+    dest='/home/{{ users__catalog[item].username }}/.forward'
+    content='{{ users__is_managed_notice }}{{ users__catalog[item].mail_forwards | default([]) | join("\n") }}'
+    owner={{ users__catalog[item].username }} group={{ users__catalog[item].username }}
+    mode=0600
+    force=yes
+  with_items: "{{ users__present }}"

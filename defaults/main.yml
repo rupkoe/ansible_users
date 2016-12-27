@@ -1,0 +1,10 @@
+---
+## see Readme.md for how to use variables
+
+users__initial_pass: ''
+users__catalog: []
+users__present: []
+users__removed: []
+
+# comment placed in user files managed by Ansible
+users__is_managed_notice: "# This file is managed by Ansible - do not change manually.\n\n"
